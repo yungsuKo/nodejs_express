@@ -7,33 +7,43 @@ var path = require('path');
 var sanitizeHtml = require('sanitize-html');
 var qs = require('querystring');
 var bodyParser = require('body-parser');
+var compression = require('compression');
 
+app.use(express.static('public'));
 app.use(bodyParser.urlencoded({extended:false}));
-
-// app.get('/', (req, res) => {res.send('Hello World!')})
-app.get('/', function(request, response) {
+app.use(compression());
+app.get('*',function(request,reponse,next){
   fs.readdir('./data', function(error, filelist){
-    var title = 'Welcome';
-    var description = 'Hello, Node.js';
-    var list = template.list(filelist);
-    var html = template.HTML(title, list,
-      `<h2>${title}</h2>${description}`,
-      `<a href="/create">create</a>`);
-    response.send(html);
+    request.list = filelist;
+    next();
   });
 });
 
-app.get('/page/:pageId', function(request, response) {
-  console.log(request.params)
-  fs.readdir('./data', function(error, filelist){
-    var filteredId = path.parse(request.params.pageId).base;
-    fs.readFile(`data/${filteredId}`, 'utf8', function(err, description){
+// app.get('/', (req, res) => {res.send('Hello World!')})
+app.get('/', function(request, response) {
+    var title = 'Welcome';
+    var description = 'Hello, Node.js';
+    var list = template.list(request.list);
+    var html = template.HTML(title, list,
+      `<h2>${title}</h2>${description}
+      <img src = "/images/hello.jpg" style="width:300px; display:block;">`,
+      `<a href="/create">create</a>`);
+    response.send(html);
+});
+
+app.get('/page/:pageId', function(request, response, next) {
+  console.log(request.list);
+  var filteredId = path.parse(request.params.pageId).base;
+  fs.readFile(`data/${filteredId}`, 'utf8', function(err, description){
+    if(err){
+      next(err);
+    }else{
       var title = request.params.pageId;
       var sanitizedTitle = sanitizeHtml(title);
       var sanitizedDescription = sanitizeHtml(description, {
         allowedTags:['h1']
       });
-      var list = template.list(filelist);
+      var list = template.list(request.list);
       var html = template.HTML(sanitizedTitle, list,
         `<h2>${sanitizedTitle}</h2>${sanitizedDescription}`,
         ` <a href="/create">create</a>
@@ -44,27 +54,25 @@ app.get('/page/:pageId', function(request, response) {
           </form>`
       );
       response.send(html);
-    });
+    }
   });
 })
 
 app.get('/create', function(request, response) {
-  fs.readdir('./data', function(error, filelist){
-    var title = 'WEB - create';
-    var list = template.list(filelist);
-    var html = template.HTML(title, list, `
-      <form action="/create_process" method="post">
-        <p><input type="text" name="title" placeholder="title"></p>
-        <p>
-          <textarea name="description" placeholder="description"></textarea>
-        </p>
-        <p>
-          <input type="submit">
-        </p>
-      </form>
-    `, '');
-    response.send(html);
-  });
+  var title = 'WEB - create';
+  var list = template.list(request.list);
+  var html = template.HTML(title, list, `
+    <form action="/create_process" method="post">
+      <p><input type="text" name="title" placeholder="title"></p>
+      <p>
+        <textarea name="description" placeholder="description"></textarea>
+      </p>
+      <p>
+        <input type="submit">
+      </p>
+    </form>
+  `, '');
+  response.send(html);
 })
 
 app.post('/create_process',function(request, response){
@@ -142,6 +150,14 @@ app.post('/delete_process',function(request, response){
   })
 });
 
+app.use(function(req,res,next){
+  res.status(404).send('sorry cant find that!')
+});
+
+app.use(function(err, req, res, next) {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
+});
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`)
